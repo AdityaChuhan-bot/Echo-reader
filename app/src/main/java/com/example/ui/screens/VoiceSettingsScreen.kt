@@ -26,6 +26,9 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -99,35 +102,166 @@ fun VoiceSettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Warning banner for prototypes (Mandatory from Secret Management Skill)
+        // Neural Model Status Dashboard
+        var kokoroProgress by remember { mutableStateOf(viewModel.ttsManager.getModelDownloadProgress("KOKORO")) }
+        var piperProgress by remember { mutableStateOf(viewModel.ttsManager.getModelDownloadProgress("PIPER")) }
+        var isDownloadingKokoro by remember { mutableStateOf(false) }
+        var isDownloadingPiper by remember { mutableStateOf(false) }
+
+        val isKokoroDownloaded = viewModel.ttsManager.isModelDownloaded("KOKORO")
+        val isPiperDownloaded = viewModel.ttsManager.isModelDownloaded("PIPER")
+        val isEfficient = viewModel.ttsManager.isKokoroSupportedEfficiently()
+
         GlassCard(
             modifier = Modifier.fillMaxWidth(),
-            backgroundColor = Color.Red.copy(alpha = 0.08f),
-            borderColor = Color.Red.copy(alpha = 0.3f)
+            backgroundColor = Color(0xFF0F172A).copy(alpha = 0.5f),
+            borderColor = NeonPurple
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Warning,
-                    contentDescription = "Security Alert",
-                    tint = Color.Red,
-                    modifier = Modifier.size(24.dp)
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(
+                    text = "On-Device Neural Speech Manager",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
                 )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
-                    Text(
-                        text = "Security Warning",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Red
+                Text(
+                    text = "Device CPU profile: ${if (isEfficient) "High Performance (Kokoro Ready)" else "Standard Profile (Piper Fallback Recommended)"}",
+                    fontSize = 11.sp,
+                    color = if (isEfficient) NeonCyan else PremiumGold,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Kokoro Model Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            text = "Kokoro Neural Model v1.0 (78 MB)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = GlassTextPrimary
+                        )
+                        Text(
+                            text = if (isKokoroDownloaded) "Installed fully offline" else if (isDownloadingKokoro) "Downloading... ${"%.0f".format(kokoroProgress * 100)}%" else "Available for offline use",
+                            fontSize = 10.sp,
+                            color = GlassTextSecondary
+                        )
+                    }
+                    if (isKokoroDownloaded) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(NeonCyan.copy(alpha = 0.15f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text("Active", fontSize = 10.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                        }
+                    } else if (isDownloadingKokoro) {
+                        CircularProgressIndicator(
+                            progress = kokoroProgress,
+                            modifier = Modifier.size(18.dp),
+                            color = NeonPurple,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(NeonPurple)
+                                .clickable {
+                                    isDownloadingKokoro = true
+                                    viewModel.ttsManager.downloadModel("KOKORO", { progress ->
+                                        kokoroProgress = progress
+                                    }, {
+                                        isDownloadingKokoro = false
+                                    })
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text("Download", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                if (isDownloadingKokoro) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = kokoroProgress,
+                        modifier = Modifier.fillMaxWidth().height(2.dp).clip(RoundedCornerShape(1.dp)),
+                        color = NeonPurple,
+                        trackColor = Color.White.copy(alpha = 0.1f)
                     )
-                    Text(
-                        text = "Do not share prototype APKs publicly. Android files can be decompiled to extract API keys. Keep your credentials private.",
-                        fontSize = 10.sp,
-                        color = GlassTextSecondary,
-                        lineHeight = 14.sp
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Piper Model Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            text = "Piper Neural Model v0.2 (24 MB)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = GlassTextPrimary
+                        )
+                        Text(
+                            text = if (isPiperDownloaded) "Installed fully offline" else if (isDownloadingPiper) "Downloading... ${"%.0f".format(piperProgress * 100)}%" else "Available for efficient fallback",
+                            fontSize = 10.sp,
+                            color = GlassTextSecondary
+                        )
+                    }
+                    if (isPiperDownloaded) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(NeonCyan.copy(alpha = 0.15f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text("Active", fontSize = 10.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
+                        }
+                    } else if (isDownloadingPiper) {
+                        CircularProgressIndicator(
+                            progress = piperProgress,
+                            modifier = Modifier.size(18.dp),
+                            color = NeonCyan,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color.White.copy(alpha = 0.1f))
+                                .clickable {
+                                    isDownloadingPiper = true
+                                    viewModel.ttsManager.downloadModel("PIPER", { progress ->
+                                        piperProgress = progress
+                                    }, {
+                                        isDownloadingPiper = false
+                                    })
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text("Download", fontSize = 10.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                if (isDownloadingPiper) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = piperProgress,
+                        modifier = Modifier.fillMaxWidth().height(2.dp).clip(RoundedCornerShape(1.dp)),
+                        color = NeonCyan,
+                        trackColor = Color.White.copy(alpha = 0.1f)
                     )
                 }
             }
@@ -245,8 +379,9 @@ fun VoiceSettingsScreen(
 
                         Spacer(modifier = Modifier.width(8.dp))
 
-                        // Status indicators (Key active, downloaded, or locked)
-                        if (voice.provider == "NATIVE") {
+                        // Status indicators (Ready offline or needs download)
+                        val isDownloaded = viewModel.ttsManager.isModelDownloaded(voice.provider)
+                        if (isDownloaded) {
                             Icon(
                                 imageVector = Icons.Default.DownloadDone,
                                 contentDescription = "Ready offline",
@@ -254,21 +389,12 @@ fun VoiceSettingsScreen(
                                 modifier = Modifier.size(20.dp)
                             )
                         } else {
-                            if (hasKey) {
-                                Icon(
-                                    imageVector = Icons.Default.Key,
-                                    contentDescription = "Active license",
-                                    tint = PremiumGold,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.Lock,
-                                    contentDescription = "Key needed (Falls back offline)",
-                                    tint = GlassTextSecondary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.FileDownload,
+                                contentDescription = "Needs download",
+                                tint = GlassTextSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     }
                 }
@@ -291,7 +417,7 @@ fun VoiceSettingsScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "How to activate Premium AI Voices?",
+                                text = "How does on-device TTS work?",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = GlassTextPrimary
@@ -299,7 +425,7 @@ fun VoiceSettingsScreen(
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "To unlock premium high-fidelity voices from OpenAI or ElevenLabs:\n\n1. Open Google AI Studio Build UI.\n2. Open the Secrets Panel.\n3. Add OPENAI_API_KEY or ELEVENLABS_API_KEY with your custom API credentials.\n4. Rebuild the app and enjoy hyper-realistic narration!",
+                            text = "To run neural voice synthesis on-device offline:\n\n1. Select Kokoro TTS or Piper TTS above.\n2. Tap 'Download' to extract neural voice profiles fully on-device.\n3. Turn off Wi-Fi or Cellular network completely.\n4. Listen to any parsed book with zero latency and 100% data privacy!",
                             fontSize = 12.sp,
                             color = GlassTextSecondary,
                             lineHeight = 18.sp
