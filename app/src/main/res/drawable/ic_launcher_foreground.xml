@@ -1,0 +1,29 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Headphones Arc Band -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:pathData="M 34 50 C 34 22, 74 22, 74 50" />
+    <!-- Left Earpad -->
+    <path
+        android:fillColor="#06B6D4"
+        android:pathData="M 28 44 A 6 6 0 0 1 34 50 L 34 60 A 6 6 0 0 1 28 66 Z" />
+    <!-- Right Earpad -->
+    <path
+        android:fillColor="#06B6D4"
+        android:pathData="M 74 44 A 6 6 0 0 1 80 50 L 80 60 A 6 6 0 0 1 74 66 Z" />
+    <!-- Book symbol in the middle -->
+    <path
+        android:fillColor="#8B5CF6"
+        android:pathData="M 44 48 C 48 50, 52 50, 54 49 C 56 50, 60 50, 64 48 L 64 68 C 60 70, 56 70, 54 69 C 52 70, 48 70, 44 68 Z" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M 54 49 L 54 69" />
+</vector>
