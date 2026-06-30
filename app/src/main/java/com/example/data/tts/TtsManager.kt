@@ -151,6 +151,7 @@ class TtsManager(private val context: Context) {
         voiceId: String,
         provider: String,
         speed: Float,
+        readingMode: String = "Story",
         listener: PlaybackListener
     ) {
         stop()
@@ -196,10 +197,10 @@ class TtsManager(private val context: Context) {
         }
 
         // 2. Execute high-performance on-device offline playback
-        speakLocalOffline(text, finalVoiceId, finalProvider, speed)
+        speakLocalOffline(text, finalVoiceId, finalProvider, speed, readingMode)
     }
 
-    private fun speakLocalOffline(text: String, voiceId: String, provider: String, speed: Float) {
+    private fun speakLocalOffline(text: String, voiceId: String, provider: String, speed: Float, readingMode: String = "Story") {
         if (!isNativeTtsReady) {
             currentListener?.onError("Speech engine is initializing. Please try again.")
             return
@@ -214,26 +215,41 @@ class TtsManager(private val context: Context) {
             }
 
             // Customize Pitch to simulate neural model profiles
-            when (voiceId) {
-                "kokoro_bella" -> tts.setPitch(1.15f)
-                "kokoro_sarah" -> tts.setPitch(1.05f)
-                "kokoro_michael" -> tts.setPitch(0.85f)
-                "kokoro_emma" -> tts.setPitch(1.10f)
-                "piper_ryan" -> tts.setPitch(0.90f)
-                "piper_alba" -> tts.setPitch(1.00f)
-                "piper_ljspeech" -> tts.setPitch(1.05f)
-                else -> tts.setPitch(1.0f)
+            var pitch = when (voiceId) {
+                "kokoro_bella" -> 1.15f
+                "kokoro_sarah" -> 1.05f
+                "kokoro_michael" -> 0.85f
+                "kokoro_emma" -> 1.10f
+                "piper_ryan" -> 0.90f
+                "piper_alba" -> 1.00f
+                "piper_ljspeech" -> 1.05f
+                else -> 1.0f
             }
 
+            // Apply Reading Mode Pitch Modifiers
+            pitch = when (readingMode) {
+                "Documentary" -> pitch * 0.82f // lower, deeper
+                "Bedtime" -> pitch * 1.08f     // softer, warmer, slightly higher
+                "Podcast" -> pitch * 1.03f     // slightly more engaging/dynamic
+                else -> pitch
+            }
+            tts.setPitch(pitch)
+
             // Set speech speed
-            val adjustedSpeed = if (provider == "PIPER") speed * 1.05f else speed
+            var adjustedSpeed = if (provider == "PIPER") speed * 1.05f else speed
+            adjustedSpeed = when (readingMode) {
+                "Study" -> adjustedSpeed * 1.2f
+                "Bedtime" -> adjustedSpeed * 0.8f
+                "Podcast" -> adjustedSpeed * 0.95f
+                else -> adjustedSpeed
+            }
             tts.setSpeechRate(adjustedSpeed)
 
             // Speak completely offline
             val params = android.os.Bundle()
             params.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "EchoReaderUtterance")
             
-            Log.d(TAG, "Speaking Offline ($provider): Voice=$voiceId, Speed=$adjustedSpeed")
+            Log.d(TAG, "Speaking Offline ($provider): Voice=$voiceId, Mode=$readingMode, Speed=$adjustedSpeed, Pitch=$pitch")
             tts.speak(text, TextToSpeech.QUEUE_FLUSH, params, "EchoReaderUtterance")
         }
     }

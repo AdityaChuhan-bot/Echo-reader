@@ -29,8 +29,8 @@ private val LightColorScheme = DarkColorScheme // Default both to dark for Liqui
 @Composable
 fun MyApplicationTheme(
   darkTheme: Boolean = isSystemInDarkTheme(),
-  // Dynamic color is available on Android 12+
-  dynamicColor: Boolean = true,
+  // Dynamic color is disabled by default to preserve the premium custom Liquid Glass aesthetic
+  dynamicColor: Boolean = false,
   content: @Composable () -> Unit,
 ) {
   val colorScheme =

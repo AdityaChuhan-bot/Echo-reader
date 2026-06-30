@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -40,6 +41,9 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Snooze
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Button
@@ -102,6 +106,31 @@ fun PlayerScreen(
     var showBookmarkDialog by remember { mutableStateOf(false) }
     var bookmarkNote by remember { mutableStateOf("") }
     var showChaptersDrawer by remember { mutableStateOf(false) }
+
+    var showAdvancedPanel by remember { mutableStateOf(false) }
+    var showSmartResumeDialog by remember { mutableStateOf(false) }
+    var previousBookId by remember { mutableStateOf<Int?>(null) }
+    var activeTab by remember { mutableStateOf("Skip") } // Skip, Dict, Queue, Stats, Bookmarks
+
+    var newWord by remember { mutableStateOf("") }
+    var newReplacement by remember { mutableStateOf("") }
+
+    val bookmarks by viewModel.bookmarks.collectAsState()
+    val readingQueue by viewModel.readingQueue.collectAsState()
+    val readingMode by viewModel.readingMode.collectAsState()
+    val pronunciations by viewModel.pronunciations.collectAsState()
+    val listeningMinutes by viewModel.listeningMinutes.collectAsState()
+    val streakDays by viewModel.streakDays.collectAsState()
+    val completedBooksCount by viewModel.completedBooksCount.collectAsState()
+
+    LaunchedEffect(book?.id) {
+        if (book != null && book!!.id != previousBookId) {
+            if (book!!.currentChapterIndex > 0 || book!!.currentSentenceIndex > 0) {
+                showSmartResumeDialog = true
+            }
+            previousBookId = book!!.id
+        }
+    }
 
     val activeChapterTitle = if (chapters.isNotEmpty() && book != null && book!!.currentChapterIndex < chapters.size) {
         chapters[book!!.currentChapterIndex].title
@@ -381,9 +410,70 @@ fun PlayerScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "Voice Library",
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         color = GlassTextSecondary,
                         fontWeight = FontWeight.Medium
+                    )
+                }
+
+                // Reading Mode Selector
+                var modeExpanded by remember { mutableStateOf(false) }
+                Box {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier
+                            .clickable { modeExpanded = true }
+                            .testTag("mode_selector_trigger")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Bookmark,
+                            contentDescription = "Reading Mode",
+                            tint = if (readingMode != "Story") NeonCyan else GlassTextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "$readingMode Mode",
+                            fontSize = 10.sp,
+                            color = if (readingMode != "Story") NeonCyan else GlassTextSecondary,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = modeExpanded,
+                        onDismissRequest = { modeExpanded = false },
+                        modifier = Modifier.background(Color(0xFF1E293B))
+                    ) {
+                        listOf("Story", "Study", "Podcast", "Documentary", "Bedtime").forEach { mode ->
+                            DropdownMenuItem(
+                                text = { Text(mode, color = Color.White) },
+                                onClick = {
+                                    viewModel.setReadingMode(mode)
+                                    modeExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+
+                // Premium Control Center (Advanced Tab Sheets)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clickable { showAdvancedPanel = true }
+                        .testTag("advanced_panel_trigger")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Tune,
+                        contentDescription = "Control Panel",
+                        tint = NeonPurple
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Control Center",
+                        fontSize = 10.sp,
+                        color = NeonPurple,
+                        fontWeight = FontWeight.Bold
                     )
                 }
 
@@ -404,7 +494,7 @@ fun PlayerScreen(
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "${book!!.speed}x Speed",
-                            fontSize = 11.sp,
+                            fontSize = 10.sp,
                             color = GlassTextSecondary,
                             fontWeight = FontWeight.Medium
                         )
@@ -453,7 +543,7 @@ fun PlayerScreen(
                         }
                         Text(
                             text = timerLabel,
-                            fontSize = 11.sp,
+                            fontSize = 10.sp,
                             color = if (sleepTimeRemaining != null) NeonCyan else GlassTextSecondary,
                             fontWeight = FontWeight.Medium
                         )
@@ -489,27 +579,6 @@ fun PlayerScreen(
                             onClick = { viewModel.startSleepTimer(-1); sleepExpanded = false }
                         )
                     }
-                }
-
-                // Bookmark Add
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .clickable { showBookmarkDialog = true }
-                        .testTag("bookmark_add_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.BookmarkAdd,
-                        contentDescription = "Add bookmark",
-                        tint = GlassTextSecondary
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Bookmark",
-                        fontSize = 11.sp,
-                        color = GlassTextSecondary,
-                        fontWeight = FontWeight.Medium
-                    )
                 }
             }
         }
@@ -565,6 +634,45 @@ fun PlayerScreen(
             )
         }
 
+        // Smart Resume Dialogue Popup
+        if (showSmartResumeDialog) {
+            AlertDialog(
+                onDismissRequest = { showSmartResumeDialog = false },
+                title = { Text("Smart Resume", color = Color.White, fontWeight = FontWeight.Bold) },
+                text = {
+                    Text(
+                        text = "You were listening to Chapter ${book!!.currentChapterIndex + 1}, sentence ${book!!.currentSentenceIndex + 1}. Would you like to resume?",
+                        color = GlassTextPrimary,
+                        fontSize = 14.sp
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                        onClick = {
+                            showSmartResumeDialog = false
+                            viewModel.play()
+                        }
+                    ) {
+                        Text("Continue Listening", color = Color.White)
+                    }
+                },
+                dismissButton = {
+                    Button(
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.08f)),
+                        onClick = {
+                            viewModel.seekToSentence(0)
+                            viewModel.skipToChapter(0)
+                            showSmartResumeDialog = false
+                        }
+                    ) {
+                        Text("Start Over", color = Color.White)
+                    }
+                },
+                containerColor = Color(0xFF0F172A)
+            )
+        }
+
         // Chapters Drawer Overlay
         AnimatedVisibility(
             visible = showChaptersDrawer,
@@ -581,14 +689,14 @@ fun PlayerScreen(
                 GlassCard(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(350.dp)
+                        .height(380.dp)
                         .clickable(enabled = false) {}, // Intercept click
                     backgroundColor = Color(0xFF0F172A),
                     borderColor = GlassBorder
                 ) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -607,7 +715,7 @@ fun PlayerScreen(
 
                         LazyColumn(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f).padding(horizontal = 16.dp)
                         ) {
                             itemsIndexed(chapters) { idx, chapter ->
                                 val isSelected = book!!.currentChapterIndex == idx
@@ -636,6 +744,430 @@ fun PlayerScreen(
                                         color = if (isSelected) NeonCyan else GlassTextPrimary,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                     )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Premium Control Center Slide-up Sheet Drawer
+        AnimatedVisibility(
+            visible = showAdvancedPanel,
+            enter = androidx.compose.animation.slideInVertically(initialOffsetY = { it }),
+            exit = androidx.compose.animation.slideOutVertically(targetOffsetY = { it })
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable { showAdvancedPanel = false },
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                GlassCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(440.dp)
+                        .clickable(enabled = false) {}, // Intercept click
+                    backgroundColor = Color(0xFF0F172A),
+                    borderColor = GlassBorder
+                ) {
+                    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                        // Title header
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Premium Options Center",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GlassTextPrimary
+                            )
+                            IconButton(onClick = { showAdvancedPanel = false }) {
+                                Icon(imageVector = Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Category tabs selection row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            listOf("Skip", "Dict", "Queue", "Stats", "Bookmarks").forEach { tab ->
+                                val active = activeTab == tab
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (active) NeonPurple.copy(alpha = 0.2f) else Color.Transparent)
+                                        .clickable { activeTab = tab }
+                                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = tab,
+                                        color = if (active) NeonCyan else GlassTextSecondary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Tab Display Dispatcher
+                        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                            when (activeTab) {
+                                "Skip" -> {
+                                    val rules = viewModel.getSkipRulesForBook(book!!.id)
+                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        Text(
+                                            "🛡️ Intelligent Document Skipping Rules",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NeonCyan
+                                        )
+                                        
+                                        listOf(
+                                            "skip_copyright" to "Skip Copyright & Publishers metadata",
+                                            "skip_toc" to "Skip Tables of Contents and Indexes",
+                                            "skip_intro" to "Skip Preface, Forewords & Authors notes",
+                                            "skip_backmatter" to "Skip Appendices & Bibliographies"
+                                        ).forEach { (key, label) ->
+                                            val enabled = rules[key] == true
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(Color.White.copy(alpha = 0.03f))
+                                                    .clickable { viewModel.setSkipRuleForBook(book!!.id, key, !enabled) }
+                                                    .padding(12.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(label, color = GlassTextPrimary, fontSize = 12.sp)
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(40.dp, 24.dp)
+                                                        .clip(CircleShape)
+                                                        .background(if (enabled) NeonCyan else Color.White.copy(alpha = 0.2f)),
+                                                    contentAlignment = if (enabled) Alignment.CenterEnd else Alignment.CenterStart
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .padding(2.dp)
+                                                            .size(20.dp)
+                                                            .clip(CircleShape)
+                                                            .background(Color.White)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                "Dict" -> {
+                                    Column(modifier = Modifier.fillMaxSize()) {
+                                        Text(
+                                            "🗣️ Pronunciation Dictionary Override",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NeonCyan
+                                        )
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            TextField(
+                                                value = newWord,
+                                                onValueChange = { newWord = it },
+                                                placeholder = { Text("Word (e.g. SQL)") },
+                                                colors = TextFieldDefaults.colors(
+                                                    focusedContainerColor = Color.White.copy(alpha = 0.05f),
+                                                    unfocusedContainerColor = Color.White.copy(alpha = 0.05f),
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White
+                                                ),
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            TextField(
+                                                value = newReplacement,
+                                                onValueChange = { newReplacement = it },
+                                                placeholder = { Text("Speech mapping") },
+                                                colors = TextFieldDefaults.colors(
+                                                    focusedContainerColor = Color.White.copy(alpha = 0.05f),
+                                                    unfocusedContainerColor = Color.White.copy(alpha = 0.05f),
+                                                    focusedTextColor = Color.White,
+                                                    unfocusedTextColor = Color.White
+                                                ),
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            IconButton(
+                                                onClick = {
+                                                    if (newWord.isNotBlank() && newReplacement.isNotBlank()) {
+                                                        viewModel.addPronunciation(newWord, newReplacement)
+                                                        newWord = ""
+                                                        newReplacement = ""
+                                                    }
+                                                },
+                                                modifier = Modifier.background(NeonPurple, CircleShape)
+                                            ) {
+                                                Icon(imageVector = Icons.Default.BookmarkAdd, contentDescription = "Add", tint = Color.White)
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+
+                                        LazyColumn(
+                                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            if (pronunciations.isEmpty()) {
+                                                item {
+                                                    Text("No custom overrides configured yet.", color = GlassTextSecondary, fontSize = 12.sp)
+                                                }
+                                            } else {
+                                                items(pronunciations.toList()) { (word, replacement) ->
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                            .background(Color.White.copy(alpha = 0.02f))
+                                                            .padding(8.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Column {
+                                                            Text(word, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                            Text("pronounced as: \"$replacement\"", color = NeonCyan, fontSize = 11.sp)
+                                                        }
+                                                        IconButton(onClick = { viewModel.deletePronunciation(word) }) {
+                                                            Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red.copy(alpha = 0.8f))
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                "Queue" -> {
+                                    Column(modifier = Modifier.fillMaxSize()) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                "📋 Custom Audiobook Listening Queue",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = NeonCyan
+                                            )
+                                            Row {
+                                                Button(
+                                                    colors = ButtonDefaults.buttonColors(containerColor = NeonCyan.copy(alpha = 0.15f)),
+                                                    onClick = {
+                                                        viewModel.addToQueue(
+                                                            book = book!!,
+                                                            chapterIndex = book!!.currentChapterIndex,
+                                                            chapterTitle = activeChapterTitle,
+                                                            sentenceIndex = book!!.currentSentenceIndex,
+                                                            label = "Snippet from chapter ${book!!.currentChapterIndex + 1}"
+                                                        )
+                                                    }
+                                                ) {
+                                                    Text("Queue Current", fontSize = 11.sp, color = NeonCyan)
+                                                }
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                IconButton(onClick = { viewModel.clearQueue() }) {
+                                                    Icon(imageVector = Icons.Default.Delete, contentDescription = "Clear Queue", tint = Color.White)
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+
+                                        LazyColumn(
+                                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            if (readingQueue.isEmpty()) {
+                                                item {
+                                                    Text("Queue is empty. Select parts or bookmarks to listen next.", color = GlassTextSecondary, fontSize = 12.sp)
+                                                }
+                                            } else {
+                                                items(readingQueue) { item ->
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                            .background(Color.White.copy(alpha = 0.02f))
+                                                            .clickable { viewModel.playQueueItem(item) }
+                                                            .padding(8.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Column {
+                                                            Text(item.bookTitle, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                            Text("${item.chapterTitle} • sentence ${item.sentenceIndex + 1}", color = NeonCyan, fontSize = 11.sp)
+                                                        }
+                                                        IconButton(onClick = { viewModel.removeFromQueue(item.id) }) {
+                                                            Icon(imageVector = Icons.Default.Close, contentDescription = "Remove", tint = Color.White)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                "Stats" -> {
+                                    Column(
+                                        modifier = Modifier.fillMaxSize(),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Text(
+                                            "📊 Personal Reading Statistics",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = NeonCyan
+                                        )
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            // Streak Card
+                                            GlassCard(
+                                                modifier = Modifier.weight(1f).height(100.dp),
+                                                backgroundColor = Color.White.copy(alpha = 0.03f)
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    verticalArrangement = Arrangement.Center,
+                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                                ) {
+                                                    Text("🔥 Streak Days", color = GlassTextSecondary, fontSize = 12.sp)
+                                                    Text("$streakDays Days", color = NeonCyan, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                                                }
+                                            }
+
+                                            // Minutes Card
+                                            GlassCard(
+                                                modifier = Modifier.weight(1f).height(100.dp),
+                                                backgroundColor = Color.White.copy(alpha = 0.03f)
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    verticalArrangement = Arrangement.Center,
+                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                                ) {
+                                                    Text("⏱️ Listening Time", color = GlassTextSecondary, fontSize = 12.sp)
+                                                    Text(String.format("%.1f mins", listeningMinutes), color = NeonCyan, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                                                }
+                                            }
+                                        }
+
+                                        // Completed Books Card
+                                        GlassCard(
+                                            modifier = Modifier.fillMaxWidth().height(80.dp),
+                                            backgroundColor = Color.White.copy(alpha = 0.03f)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxSize().padding(16.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("📚 Completed Audiobooks count:", color = GlassTextPrimary, fontSize = 14.sp)
+                                                Text("$completedBooksCount Books", color = NeonPurple, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                "Bookmarks" -> {
+                                    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+                                    Column(modifier = Modifier.fillMaxSize()) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                "🔖 Bookmarks & Highlights",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = NeonCyan
+                                            )
+                                            
+                                            // Export bookmarks
+                                            IconButton(
+                                                onClick = {
+                                                    val annotatedString = androidx.compose.ui.text.buildAnnotatedString {
+                                                        append("EchoReader Bookmarks Export - ${book!!.title}\n\n")
+                                                        bookmarks.forEach {
+                                                            append("Chapter ${it.chapterIndex + 1} - sentence ${it.sentenceIndex + 1}\n")
+                                                            append("\"${it.quoteText}\"\n")
+                                                            if (it.note.isNotBlank()) append("Note: ${it.note}\n")
+                                                            append("\n")
+                                                        }
+                                                    }
+                                                    clipboardManager.setText(annotatedString)
+                                                }
+                                            ) {
+                                                Icon(imageVector = Icons.Default.Share, contentDescription = "Export bookmarks", tint = NeonCyan)
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+
+                                        LazyColumn(
+                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            if (bookmarks.isEmpty()) {
+                                                item {
+                                                    Text("No bookmarks saved for this book. Tap 'Bookmark' on the player.", color = GlassTextSecondary, fontSize = 12.sp)
+                                                }
+                                            } else {
+                                                items(bookmarks) { b ->
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                            .background(Color.White.copy(alpha = 0.02f))
+                                                            .clickable {
+                                                                viewModel.skipToChapter(b.chapterIndex)
+                                                                viewModel.seekToSentence(b.sentenceIndex)
+                                                                showAdvancedPanel = false
+                                                            }
+                                                            .padding(10.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Text("\"${b.quoteText.take(50)}...\"", color = Color.White, fontSize = 12.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic)
+                                                            if (b.note.isNotBlank()) {
+                                                                Text("Note: ${b.note}", color = NeonCyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                            }
+                                                            Text("Chapter ${b.chapterIndex + 1} • sentence ${b.sentenceIndex + 1}", color = GlassTextSecondary, fontSize = 10.sp)
+                                                        }
+                                                        IconButton(onClick = { viewModel.deleteBookmark(b.id) }) {
+                                                            Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red.copy(alpha = 0.8f))
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

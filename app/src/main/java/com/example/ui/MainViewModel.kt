@@ -77,6 +77,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val sentenceText: String
     )
 
+    // Reading Modes: Story, Study, Podcast, Documentary, Bedtime
+    private val _readingMode = MutableStateFlow("Story")
+    val readingMode: StateFlow<String> = _readingMode.asStateFlow()
+
+    // Pronunciation Dictionary: custom word modifications
+    private val pronunciationPrefs = application.getSharedPreferences("pronunciation_dict", Context.MODE_PRIVATE)
+    private val _pronunciations = MutableStateFlow<Map<String, String>>(emptyMap())
+    val pronunciations: StateFlow<Map<String, String>> = _pronunciations.asStateFlow()
+
+    // Playback queue items for advanced queued listening
+    data class QueueItem(
+        val id: String,
+        val bookId: Int,
+        val bookTitle: String,
+        val chapterIndex: Int,
+        val chapterTitle: String,
+        val sentenceIndex: Int,
+        val label: String
+    )
+    private val _readingQueue = MutableStateFlow<List<QueueItem>>(emptyList())
+    val readingQueue: StateFlow<List<QueueItem>> = _readingQueue.asStateFlow()
+
+    // Reading statistics
+    private val statsPrefs = application.getSharedPreferences("reading_stats", Context.MODE_PRIVATE)
+    private var lastPlayStartTime = 0L
+
+    private val _listeningMinutes = MutableStateFlow(0f)
+    val listeningMinutes: StateFlow<Float> = _listeningMinutes.asStateFlow()
+
+    private val _streakDays = MutableStateFlow(0)
+    val streakDays: StateFlow<Int> = _streakDays.asStateFlow()
+
+    private val _completedBooksCount = MutableStateFlow(0)
+    val completedBooksCount: StateFlow<Int> = _completedBooksCount.asStateFlow()
+
     private var bookmarkCollectorJob: Job? = null
 
     // Player listener
@@ -84,16 +119,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         override fun onStart() {
             _isBuffering.value = false
             _isPlaying.value = true
+            recordPlaybackStart()
         }
 
         override fun onComplete() {
             _isPlaying.value = false
+            recordPlaybackStop()
             playNextSentence()
         }
 
         override fun onError(message: String) {
             _isBuffering.value = false
             _isPlaying.value = false
+            recordPlaybackStop()
             Log.e(TAG, "TTS Error: $message")
         }
 
@@ -103,7 +141,199 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
-        // Automatically preheat voices and restore state if needed
+        loadPronunciations()
+        loadStats()
+    }
+
+    // --- Statistics Logic ---
+    private fun loadStats() {
+        _listeningMinutes.value = statsPrefs.getFloat("total_listening_ms", 0f) / (1000f * 60f)
+        _streakDays.value = statsPrefs.getInt("streak_days", 0)
+        _completedBooksCount.value = statsPrefs.getInt("completed_books", 0)
+        updateStreak()
+    }
+
+    private fun recordPlaybackStart() {
+        lastPlayStartTime = System.currentTimeMillis()
+        updateStreak()
+    }
+
+    fun recordPlaybackStop() {
+        if (lastPlayStartTime > 0) {
+            val elapsed = System.currentTimeMillis() - lastPlayStartTime
+            if (elapsed > 0 && elapsed < 30 * 60 * 1000L) { // sanity check (under 30 mins)
+                val currentMs = statsPrefs.getFloat("total_listening_ms", 0f)
+                statsPrefs.edit().putFloat("total_listening_ms", currentMs + elapsed).apply()
+                _listeningMinutes.value = (currentMs + elapsed) / (1000f * 60f)
+            }
+            lastPlayStartTime = 0L
+        }
+    }
+
+    private fun updateStreak() {
+        val lastRead = statsPrefs.getLong("last_read_time", 0L)
+        val today = System.currentTimeMillis()
+        val oneDayMs = 24 * 60 * 60 * 1000L
+        
+        if (lastRead == 0L) {
+            statsPrefs.edit().putInt("streak_days", 1).putLong("last_read_time", today).apply()
+            _streakDays.value = 1
+        } else {
+            val diff = today - lastRead
+            if (diff in oneDayMs until (2 * oneDayMs)) {
+                val currentStreak = statsPrefs.getInt("streak_days", 0)
+                statsPrefs.edit().putInt("streak_days", currentStreak + 1).putLong("last_read_time", today).apply()
+                _streakDays.value = currentStreak + 1
+            } else if (diff >= 2 * oneDayMs) {
+                statsPrefs.edit().putInt("streak_days", 1).putLong("last_read_time", today).apply()
+                _streakDays.value = 1
+            } else {
+                statsPrefs.edit().putLong("last_read_time", today).apply()
+                _streakDays.value = statsPrefs.getInt("streak_days", 1)
+            }
+        }
+    }
+
+    fun incrementCompletedBooks() {
+        val completed = statsPrefs.getInt("completed_books", 0) + 1
+        statsPrefs.edit().putInt("completed_books", completed).apply()
+        _completedBooksCount.value = completed
+    }
+
+    // --- Pronunciation Dictionary Logic ---
+    private fun loadPronunciations() {
+        val all = pronunciationPrefs.all
+        val map = all.mapValues { it.value.toString() }
+        _pronunciations.value = map
+    }
+
+    fun addPronunciation(word: String, replacement: String) {
+        if (word.isNotBlank()) {
+            pronunciationPrefs.edit().putString(word.trim().lowercase(), replacement.trim()).apply()
+            loadPronunciations()
+        }
+    }
+
+    fun deletePronunciation(word: String) {
+        pronunciationPrefs.edit().remove(word.trim().lowercase()).apply()
+        loadPronunciations()
+    }
+
+    fun applyPronunciations(text: String): String {
+        var processedText = text
+        _pronunciations.value.forEach { (word, replacement) ->
+            val regex = Regex("(?i)\\b$word\\b")
+            processedText = processedText.replace(regex, replacement)
+        }
+        return processedText
+    }
+
+    // --- Playback Queue Logic ---
+    fun addToQueue(book: BookEntity, chapterIndex: Int, chapterTitle: String, sentenceIndex: Int, label: String) {
+        val item = QueueItem(
+            id = java.util.UUID.randomUUID().toString(),
+            bookId = book.id,
+            bookTitle = book.title,
+            chapterIndex = chapterIndex,
+            chapterTitle = chapterTitle,
+            sentenceIndex = sentenceIndex,
+            label = label
+        )
+        _readingQueue.value = _readingQueue.value + item
+    }
+
+    fun removeFromQueue(id: String) {
+        _readingQueue.value = _readingQueue.value.filter { it.id != id }
+    }
+
+    fun clearQueue() {
+        _readingQueue.value = emptyList()
+    }
+
+    fun playQueueItem(item: QueueItem) {
+        viewModelScope.launch {
+            val matchedBook = repository.getBookByIdSync(item.bookId) ?: return@launch
+            val updated = matchedBook.copy(
+                currentChapterIndex = item.chapterIndex,
+                currentSentenceIndex = item.sentenceIndex
+            )
+            repository.updateBook(updated)
+            selectBook(updated)
+            removeFromQueue(item.id)
+            play()
+        }
+    }
+
+    // --- Smart Skip Preferences ---
+    fun getSkipRulesForBook(bookId: Int): Map<String, Boolean> {
+        val skipPrefs = getApplication<Application>().getSharedPreferences("skip_rules_$bookId", Context.MODE_PRIVATE)
+        return mapOf(
+            "skip_copyright" to skipPrefs.getBoolean("skip_copyright", true),
+            "skip_toc" to skipPrefs.getBoolean("skip_toc", true),
+            "skip_intro" to skipPrefs.getBoolean("skip_intro", false),
+            "skip_backmatter" to skipPrefs.getBoolean("skip_backmatter", false)
+        )
+    }
+
+    fun setSkipRuleForBook(bookId: Int, rule: String, enabled: Boolean) {
+        val skipPrefs = getApplication<Application>().getSharedPreferences("skip_rules_$bookId", Context.MODE_PRIVATE)
+        skipPrefs.edit().putBoolean(rule, enabled).apply()
+    }
+
+    fun shouldSkipChapter(chapterTitle: String, textContent: String): Boolean {
+        val book = _currentBook.value ?: return false
+        val rules = getSkipRulesForBook(book.id)
+        val contentLower = textContent.lowercase()
+        val titleLower = chapterTitle.lowercase()
+
+        if (rules["skip_copyright"] == true) {
+            if (titleLower.contains("copyright") || titleLower.contains("publisher") || titleLower.contains("isbn") ||
+                contentLower.contains("all rights reserved") || contentLower.contains("printed in the united") ||
+                contentLower.contains("isbn ")
+            ) {
+                Log.d(TAG, "Smart Skip: Skipping Copyright/Publisher metadata page")
+                return true
+            }
+        }
+        if (rules["skip_toc"] == true) {
+            if (titleLower.contains("contents") || titleLower.contains("index") || titleLower.contains("table of contents") ||
+                contentLower.contains("table of contents") || contentLower.contains("contents")
+            ) {
+                Log.d(TAG, "Smart Skip: Skipping Table of Contents page")
+                return true
+            }
+        }
+        if (rules["skip_intro"] == true) {
+            if (titleLower.contains("foreword") || titleLower.contains("preface") || titleLower.contains("acknowledgement") ||
+                titleLower.contains("dedication") || titleLower.contains("about the author") || titleLower.contains("prologue")
+            ) {
+                Log.d(TAG, "Smart Skip: Skipping Introductory content")
+                return true
+            }
+        }
+        if (rules["skip_backmatter"] == true) {
+            if (titleLower.contains("appendix") || titleLower.contains("footnotes") || titleLower.contains("references") ||
+                titleLower.contains("bibliography") || titleLower.contains("glossary")
+            ) {
+                Log.d(TAG, "Smart Skip: Skipping Backmatter content")
+                return true
+            }
+        }
+        return false
+    }
+
+    fun setReadingMode(mode: String) {
+        _readingMode.value = mode
+        val book = _currentBook.value ?: return
+        val adjustedSpeed = when (mode) {
+            "Story" -> 1.0f
+            "Study" -> 1.25f
+            "Podcast" -> 0.95f
+            "Documentary" -> 1.05f
+            "Bedtime" -> 0.8f
+            else -> 1.0f
+        }
+        changeSpeed(adjustedSpeed)
     }
 
     fun selectBook(book: BookEntity) {
@@ -114,9 +344,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val chaps = repository.getChapters(book.id)
             _currentChapters.value = chaps
 
+            // Check if current chapter should be skipped based on user skip filters
+            var targetChapterIdx = book.currentChapterIndex
+            while (targetChapterIdx < chaps.size && shouldSkipChapter(chaps[targetChapterIdx].title, chaps[targetChapterIdx].textContent)) {
+                Log.d(TAG, "selectBook: Auto-skipping chapter at: $targetChapterIdx")
+                targetChapterIdx++
+            }
+
+            // Adjust selection to unskipped chapter
+            val activeChapterIndex = if (targetChapterIdx < chaps.size) targetChapterIdx else book.currentChapterIndex
+            val activeSentenceIndex = if (targetChapterIdx != book.currentChapterIndex) 0 else book.currentSentenceIndex
+
             // Update sentences for current chapter
-            if (chaps.isNotEmpty() && book.currentChapterIndex < chaps.size) {
-                val currentText = chaps[book.currentChapterIndex].textContent
+            if (chaps.isNotEmpty() && activeChapterIndex < chaps.size) {
+                val currentText = chaps[activeChapterIndex].textContent
                 _currentSentences.value = BookParser.splitIntoSentences(currentText)
             } else {
                 _currentSentences.value = emptyList()
@@ -131,7 +372,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // Record last opened
-            val updated = book.copy(lastOpened = System.currentTimeMillis())
+            val updated = book.copy(
+                currentChapterIndex = activeChapterIndex,
+                currentSentenceIndex = activeSentenceIndex,
+                lastOpened = System.currentTimeMillis()
+            )
             repository.updateBook(updated)
             _currentBook.value = updated
         }
@@ -150,20 +395,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return
             } else {
                 // End of book
+                incrementCompletedBooks()
+                
+                // If there's an item in the queue, automatically play it!
+                val queue = _readingQueue.value
+                if (queue.isNotEmpty()) {
+                    playQueueItem(queue.first())
+                    return
+                }
+
                 stop()
                 return
             }
         }
 
-        val textToSpeak = sentences[sentenceIndex]
+        val originalText = sentences[sentenceIndex]
+        val processedText = applyPronunciations(originalText)
         _isBuffering.value = true
         _isPlaying.value = true
 
         ttsManager.speak(
-            text = textToSpeak,
+            text = processedText,
             voiceId = book.voiceId,
             provider = book.voiceProvider,
             speed = book.speed,
+            readingMode = _readingMode.value,
             listener = ttsListener
         )
     }
@@ -171,12 +427,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun pause() {
         ttsManager.pause()
         _isPlaying.value = false
+        recordPlaybackStop()
     }
 
     fun resume() {
         if (ttsManager.isPlaying()) {
             ttsManager.resume()
             _isPlaying.value = true
+            recordPlaybackStart()
         } else {
             play()
         }
@@ -186,6 +444,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ttsManager.stop()
         _isPlaying.value = false
         _isBuffering.value = false
+        recordPlaybackStop()
     }
 
     private fun playNextSentence() {
@@ -202,8 +461,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _currentBook.value = updated
                 play()
             } else {
-                // Next chapter
-                val nextChapterIdx = book.currentChapterIndex + 1
+                // Next chapter, skipping any that match skip rules
+                val chaps = _currentChapters.value
+                var nextChapterIdx = book.currentChapterIndex + 1
+                while (nextChapterIdx < book.totalChapters && nextChapterIdx < chaps.size &&
+                    shouldSkipChapter(chaps[nextChapterIdx].title, chaps[nextChapterIdx].textContent)
+                ) {
+                    Log.d(TAG, "playNextSentence: Auto-skipping chapter at index $nextChapterIdx")
+                    nextChapterIdx++
+                }
+
                 if (nextChapterIdx < book.totalChapters) {
                     val updated = book.copy(
                         currentChapterIndex = nextChapterIdx,
@@ -214,7 +481,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _currentBook.value = updated
                     
                     // Reload sentences
-                    val chaps = _currentChapters.value
                     if (nextChapterIdx < chaps.size) {
                         _currentSentences.value = BookParser.splitIntoSentences(chaps[nextChapterIdx].textContent)
                     }
@@ -228,13 +494,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 } else {
                     // End of Audiobook
+                    incrementCompletedBooks()
+                    
                     val updated = book.copy(
                         currentChapterIndex = 0,
                         currentSentenceIndex = 0
                     )
                     repository.updateBook(updated)
                     _currentBook.value = updated
-                    stop()
+
+                    // Queue fall-through
+                    val queue = _readingQueue.value
+                    if (queue.isNotEmpty()) {
+                        playQueueItem(queue.first())
+                    } else {
+                        stop()
+                    }
                 }
             }
         }
