@@ -23,8 +23,10 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      - name: Grant Execute Permission to Gradlew
-        run: chmod +x gradlew
+      - name: Grant Execute Permission to Gradlew and Sanitize Line Endings
+        run: |
+          sed -i 's/\r$//' gradlew
+          chmod +x gradlew
 
       - name: Create local .env file
         run: cp .env.example .env
