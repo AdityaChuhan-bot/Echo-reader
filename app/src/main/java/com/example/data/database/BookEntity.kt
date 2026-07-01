@@ -20,8 +20,8 @@ data class BookEntity(
     val lastOpened: Long = System.currentTimeMillis(),
     val estimatedTimeMinutes: Int = 0,
     val speed: Float = 1.0f,
-    val voiceId: String = "kokoro_bella",
-    val voiceProvider: String = "KOKORO", // KOKORO, PIPER, NATIVE
+    val voiceId: String = "kitten_mimi",
+    val voiceProvider: String = "KITTENTTS", // KITTENTTS, NATIVE
     val isPremium: Boolean = false
 )
 

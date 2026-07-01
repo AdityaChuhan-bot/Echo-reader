@@ -56,7 +56,7 @@ import com.example.ui.screens.LibraryScreen
 import com.example.ui.screens.PlayerScreen
 import com.example.ui.screens.SearchScreen
 import com.example.ui.screens.VoiceSettingsScreen
-import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.theme.AudioBookTheme
 import com.example.ui.theme.NeonCyan
 
 enum class Screen {
@@ -71,7 +71,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MyApplicationTheme {
+            AudioBookTheme {
                 val viewModel: MainViewModel = viewModel()
                 var currentScreen by remember { mutableStateOf(Screen.Library) }
                 val currentBook by viewModel.currentBook.collectAsState()

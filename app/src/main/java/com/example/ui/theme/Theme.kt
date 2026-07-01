@@ -27,7 +27,7 @@ private val LightColorScheme = DarkColorScheme // Default both to dark for Liqui
 
 
 @Composable
-fun MyApplicationTheme(
+fun AudioBookTheme(
   darkTheme: Boolean = isSystemInDarkTheme(),
   // Dynamic color is disabled by default to preserve the premium custom Liquid Glass aesthetic
   dynamicColor: Boolean = false,

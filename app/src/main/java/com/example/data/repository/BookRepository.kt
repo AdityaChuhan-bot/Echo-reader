@@ -110,8 +110,8 @@ class BookRepository(private val bookDao: BookDao) {
             totalSentences = parsedBook.totalSentences,
             estimatedTimeMinutes = estimatedTimeMin,
             speed = 1.0f,
-            voiceId = "kokoro_bella",
-            voiceProvider = "KOKORO"
+            voiceId = "kitten_mimi",
+            voiceProvider = "KITTENTTS"
         )
         val bookId = bookDao.insertBook(bookEntity).toInt()
 
@@ -194,8 +194,8 @@ class BookRepository(private val bookDao: BookDao) {
             totalSentences = sentenceCount,
             estimatedTimeMinutes = estimatedTimeMin,
             speed = 1.0f,
-            voiceId = "kokoro_bella",
-            voiceProvider = "KOKORO"
+            voiceId = "kitten_mimi",
+            voiceProvider = "KITTENTTS"
         )
         val bookId = bookDao.insertBook(bookEntity).toInt()
 
