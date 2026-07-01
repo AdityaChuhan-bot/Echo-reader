@@ -1,6 +1,6 @@
 {
-  "name": "EchoReader AI",
-  "description": "AI-powered PDF audiobook reader with natural, professional storytelling voices.",
+  "name": "AudioBook",
+  "description": "Offline-first PDF, EPUB, DOCX & TXT audiobook app powered by on-device KittenTTS offline speech.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -99,7 +99,7 @@ fun LibraryScreen(
             ) {
                 Column {
                     Text(
-                        text = "EchoReader AI",
+                        text = "AudioBook",
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Bold,
                         color = GlassTextPrimary,
@@ -287,7 +287,7 @@ fun LibraryScreen(
                         )
                         Spacer(modifier = Modifier.height(20.dp))
                         Text(
-                            text = "EchoReader AI Processing",
+                            text = "AudioBook Processing",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = GlassTextPrimary

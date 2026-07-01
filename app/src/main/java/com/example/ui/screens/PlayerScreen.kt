@@ -1112,7 +1112,7 @@ fun PlayerScreen(
                                             IconButton(
                                                 onClick = {
                                                     val annotatedString = androidx.compose.ui.text.buildAnnotatedString {
-                                                        append("EchoReader Bookmarks Export - ${book!!.title}\n\n")
+                                                        append("AudioBook Bookmarks Export - ${book!!.title}\n\n")
                                                         bookmarks.forEach {
                                                             append("Chapter ${it.chapterIndex + 1} - sentence ${it.sentenceIndex + 1}\n")
                                                             append("\"${it.quoteText}\"\n")

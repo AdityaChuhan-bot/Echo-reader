@@ -45,6 +45,7 @@ object BookParser {
             "txt" -> parseTxt(file)
             "epub" -> parseEpub(file)
             "pdf" -> parsePdf(context, file)
+            "docx" -> parseDocx(file)
             else -> parseTxt(file) // Fallback to txt
         }
 
