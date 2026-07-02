@@ -23,7 +23,7 @@ class KittenTtsService(private val context: Context) {
         prefs.edit().putString("kitten_tts_base_url", url.trim()).apply()
     }
 
-    fun getBaseUrl(): String = prefs.getString("kitten_tts_base_url", "")?.trim().orEmpty()
+    fun getBaseUrl(): String = prefs.getString("kitten_tts_base_url", "https://huggingface.co/KittenML/kitten-tts-mini-0.8")?.trim().orEmpty()
 
     fun isConfigured(): Boolean = getBaseUrl().isNotBlank()
 
