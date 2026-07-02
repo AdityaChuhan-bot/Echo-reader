@@ -126,6 +126,41 @@ object BookParser {
     }
 
     /**
+     * Parses a DOCX file (basically a zip containing word/document.xml).
+     */
+    private fun parseDocx(file: File): List<ParsedChapter> {
+        try {
+            val zipStream = ZipInputStream(FileInputStream(file))
+            var entry = zipStream.nextEntry
+            while (entry != null) {
+                if (entry.name == "word/document.xml") {
+                    val bytes = zipStream.readBytes()
+                    val rawXml = String(bytes, Charsets.UTF_8)
+                    
+                    // Simple regex to extract <w:t>...</w:t> text content from Word XML
+                    val textBuilder = StringBuilder()
+                    val regex = Regex("<w:t[^>]*>(.*?)</w:t>")
+                    regex.findAll(rawXml).forEach { match ->
+                        textBuilder.append(match.groupValues[1]).append(" ")
+                    }
+                    
+                    val plainText = textBuilder.toString().trim()
+                    if (plainText.isNotBlank()) {
+                        zipStream.close()
+                        return autoDetectChapters(plainText)
+                    }
+                }
+                zipStream.closeEntry()
+                entry = zipStream.nextEntry
+            }
+            zipStream.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed parsing DOCX: ${e.message}", e)
+        }
+        return parseTxt(file) // Fallback
+    }
+
+    /**
      * Parses a PDF file page-by-page. If text rendering fails, uses on-device ML Kit OCR.
      */
     private suspend fun parsePdf(context: Context, file: File): List<ParsedChapter> = withContext(Dispatchers.IO) {
