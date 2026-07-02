@@ -61,7 +61,9 @@ class TtsManager(private val context: Context) {
 
     private var currentListener: PlaybackListener? = null
     private var nativeTts: TextToSpeech? = null
+    private var kittenTtsService: KittenTtsService? = null
     private var isTtsReady = false
+    private var isKittenConfigured = false
 
     // Media3 ExoPlayer for playing synthesized wave chunks
     private var exoPlayer: ExoPlayer? = null
@@ -88,19 +90,37 @@ class TtsManager(private val context: Context) {
     }
 
     init {
-        initTts()
-        initPlayer()
+        try {
+            kittenTtsService = KittenTtsService(context)
+            isKittenConfigured = kittenTtsService?.isConfigured() == true
+            initTts()
+            initPlayer()
+        } catch (t: Throwable) {
+            Log.e(TAG, "Failed to initialize TTS subsystem during startup", t)
+            isTtsReady = false
+            isKittenConfigured = false
+        }
     }
 
     private fun initTts() {
-        nativeTts = TextToSpeech(context) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                isTtsReady = true
-                Log.d(TAG, "KittenTTS Backend (System TTS Helper) initialized successfully")
-                setupUtteranceListener()
-            } else {
-                Log.e(TAG, "Failed to initialize KittenTTS Offline Helper")
+        try {
+            nativeTts = TextToSpeech(context) { status ->
+                if (status == TextToSpeech.SUCCESS) {
+                    isTtsReady = true
+                    Log.d(TAG, "System TTS helper initialized successfully")
+                    setupUtteranceListener()
+                } else {
+                    Log.e(TAG, "System TTS initialization failed")
+                    isTtsReady = false
+                }
             }
+        } catch (t: Throwable) {
+            Log.e(TAG, "TextToSpeech initialization failed", t)
+            isTtsReady = false
+        }
+
+        if (!isKittenConfigured) {
+            Log.d(TAG, "KittenTTS endpoint not configured yet; app will open with safe fallback")
         }
     }
 
@@ -144,8 +164,8 @@ class TtsManager(private val context: Context) {
                         .build()
                     Log.d(TAG, "MediaSession successfully registered for system notification integration")
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error initializing ExoPlayer/MediaSession: ${e.message}")
+            } catch (t: Throwable) {
+                Log.e(TAG, "Error initializing ExoPlayer/MediaSession", t)
             }
         }
     }
@@ -207,6 +227,13 @@ class TtsManager(private val context: Context) {
 
     fun hasApiKey(provider: String): Boolean = true
 
+    fun configureKittenEndpoint(url: String) {
+        kittenTtsService?.setBaseUrl(url)
+        isKittenConfigured = url.isNotBlank()
+    }
+
+    fun getKittenEndpoint(): String = kittenTtsService?.getBaseUrl().orEmpty()
+
     fun downloadModel(provider: String, onProgress: (Float) -> Unit, onComplete: () -> Unit) {
         mainScope.launch {
             onProgress(1.0f)
@@ -254,67 +281,95 @@ class TtsManager(private val context: Context) {
         speed: Float,
         targetFile: File
     ) {
+        currentSynthesisFile = targetFile
+
+        if (isKittenConfigured && kittenTtsService != null) {
+            try {
+                val succeeded = kittenTtsService!!.synthesizeToFile(text, voiceId, speed, targetFile)
+                if (succeeded) {
+                    currentListener?.onStart()
+                    playSynthesizedFile()
+                    return
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "KittenTTS service synthesis failed", t)
+            }
+        }
+
         if (!isTtsReady) {
-            currentListener?.onError("KittenTTS engine is starting up. Please wait...")
+            currentListener?.onError("KittenTTS is not ready yet. Please try again in a moment.")
             return
         }
 
         nativeTts?.let { tts ->
-            // Match voice parameters
-            if (voiceId.contains("lily") || voiceId.contains("leo")) {
-                tts.language = Locale.UK
-            } else {
-                tts.language = Locale.US
-            }
+            try {
+                if (voiceId.contains("lily") || voiceId.contains("leo")) {
+                    tts.language = Locale.UK
+                } else {
+                    tts.language = Locale.US
+                }
 
-            // Map KittenTTS voice pitches
-            val pitch = when (voiceId) {
-                "kitten_mimi" -> 1.12f
-                "kitten_lily" -> 1.05f
-                "kitten_marvin" -> 0.88f
-                "kitten_bruce" -> 0.78f
-                "kitten_jenny" -> 1.15f
-                "kitten_leo" -> 0.95f
-                else -> 1.00f
-            }
-            tts.setPitch(pitch)
+                val pitch = when (voiceId) {
+                    "kitten_mimi" -> 1.12f
+                    "kitten_lily" -> 1.05f
+                    "kitten_marvin" -> 0.88f
+                    "kitten_bruce" -> 0.78f
+                    "kitten_jenny" -> 1.15f
+                    "kitten_leo" -> 0.95f
+                    else -> 1.00f
+                }
+                tts.setPitch(pitch)
+                tts.setSpeechRate(speed)
 
-            // Dynamic speeds
-            tts.setSpeechRate(speed)
+                val utteranceId = "KittenTTS_${System.currentTimeMillis()}"
+                currentSynthesisId = utteranceId
 
-            val utteranceId = "KittenTTS_${System.currentTimeMillis()}"
-            currentSynthesisId = utteranceId
-            currentSynthesisFile = targetFile
+                val params = Bundle().apply {
+                    putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
+                }
 
-            val params = Bundle().apply {
-                putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, utteranceId)
-            }
-
-            // Perform offline file synthesis
-            val result = tts.synthesizeToFile(text, params, targetFile, utteranceId)
-            if (result != TextToSpeech.SUCCESS) {
-                Log.e(TAG, "Failed to queue offline synthesis")
-                currentListener?.onError("KittenTTS failed to queue offline synthesis.")
+                val result = tts.synthesizeToFile(text, params, targetFile, utteranceId)
+                if (result != TextToSpeech.SUCCESS) {
+                    Log.e(TAG, "Failed to queue offline synthesis")
+                    currentListener?.onError("KittenTTS failed to queue offline synthesis.")
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "Synthesis fallback failed", t)
+                currentListener?.onError("KittenTTS fallback failed to initialize.")
             }
         }
     }
 
     private fun playSynthesizedFile() {
-        val file = currentSynthesisFile ?: return
+        val file = currentSynthesisFile ?: run {
+            currentListener?.onError("No synthesized audio file is ready.")
+            return
+        }
         if (!file.exists() || file.length() == 0L) {
             Log.e(TAG, "Synthesized audio file is missing or empty")
             currentListener?.onError("Synthesized audiobook page is unreadable.")
             return
         }
 
+        if (exoPlayer == null) {
+            Log.w(TAG, "ExoPlayer is unavailable; skipping playback")
+            currentListener?.onError("Playback engine is unavailable.")
+            return
+        }
+
         if (requestAudioFocus()) {
             exoPlayer?.let { player ->
-                player.stop()
-                player.clearMediaItems()
-                val mediaItem = MediaItem.fromUri(Uri.fromFile(file))
-                player.setMediaItem(mediaItem)
-                player.prepare()
-                player.play()
+                try {
+                    player.stop()
+                    player.clearMediaItems()
+                    val mediaItem = MediaItem.fromUri(Uri.fromFile(file))
+                    player.setMediaItem(mediaItem)
+                    player.prepare()
+                    player.play()
+                } catch (t: Throwable) {
+                    Log.e(TAG, "Failed to start playback", t)
+                    currentListener?.onError("Playback failed to start.")
+                }
             }
         } else {
             Log.e(TAG, "Audio focus denied. Playback blocked.")
@@ -356,17 +411,27 @@ class TtsManager(private val context: Context) {
     }
 
     fun pause() {
+        if (exoPlayer == null) return
         mainScope.launch {
-            exoPlayer?.pause()
+            try {
+                exoPlayer?.pause()
+            } catch (t: Throwable) {
+                Log.e(TAG, "Pause failed", t)
+            }
         }
     }
 
     fun resume() {
+        if (exoPlayer == null) return
         mainScope.launch {
-            if (exoPlayer?.playbackState != Player.STATE_IDLE) {
-                if (requestAudioFocus()) {
-                    exoPlayer?.play()
+            try {
+                if (exoPlayer?.playbackState != Player.STATE_IDLE) {
+                    if (requestAudioFocus()) {
+                        exoPlayer?.play()
+                    }
                 }
+            } catch (t: Throwable) {
+                Log.e(TAG, "Resume failed", t)
             }
         }
     }
@@ -376,9 +441,13 @@ class TtsManager(private val context: Context) {
         currentSpeakJob = null
         currentSynthesisId = null
         mainScope.launch {
-            exoPlayer?.stop()
-            exoPlayer?.clearMediaItems()
-            abandonAudioFocus()
+            try {
+                exoPlayer?.stop()
+                exoPlayer?.clearMediaItems()
+                abandonAudioFocus()
+            } catch (t: Throwable) {
+                Log.e(TAG, "Stop failed", t)
+            }
         }
     }
 
@@ -388,10 +457,22 @@ class TtsManager(private val context: Context) {
 
     fun shutdown() {
         stop()
-        nativeTts?.shutdown()
+        try {
+            nativeTts?.shutdown()
+        } catch (t: Throwable) {
+            Log.e(TAG, "TTS shutdown failed", t)
+        }
         mainScope.launch {
-            mediaSession?.release()
-            exoPlayer?.release()
+            try {
+                mediaSession?.release()
+            } catch (t: Throwable) {
+                Log.e(TAG, "MediaSession release failed", t)
+            }
+            try {
+                exoPlayer?.release()
+            } catch (t: Throwable) {
+                Log.e(TAG, "ExoPlayer release failed", t)
+            }
         }
         // Clean up cached wav files periodically on shutdown
         cacheDir.listFiles()?.forEach { file ->
