@@ -1,131 +1,21 @@
-# 📚 Echo Reader
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
 
-> A modern AI-powered audiobook reader for Android that transforms books, PDFs, EPUBs, DOCX files, and text into natural-sounding audiobooks.
+# Run and deploy your AI Studio app
 
----
+This contains everything you need to run your app locally.
 
-## ✨ Features
+View your app in AI Studio: https://ai.studio/apps/048ee1b4-bf79-425e-b93a-ab24ff2d1e36
 
-- 📖 Read PDF, EPUB, DOCX and TXT files
-- 🧠 AI-powered Text-to-Speech
-- 🎙️ High-quality natural voices
-- ⏯️ Play, Pause, Resume and Stop
-- ⏩ Adjustable playback speed
-- 🎧 Background playback
-- 🔖 Bookmark support
-- 📑 Resume from last reading position
-- 🌙 Beautiful Dark Mode UI
-- 📂 Built-in file manager
-- 🔍 Search inside books
-- 📚 Library management
-- ❤️ Favorite books
-- 📱 Optimized for Android
-- 🔋 Battery-efficient playback
-- 🚀 Fast document processing
+## Run Locally
 
----
+**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
 
-## 🛠 Planned AI Features
 
-- Multiple premium-quality voices
-- Emotion-aware narration
-- Chapter detection
-- Character voice switching
-- Offline AI TTS support
-- Cloud voice synthesis
-- AI pronunciation correction
-- Smart pause detection
-- Sleep timer
-- Reading statistics
-- Voice cloning (future release)
-- Real-time translation with narration
-- OCR support for scanned PDFs
-- Summarize books using AI
-- Ask questions about the current book
-
----
-
-## 📂 Supported Formats
-
-- PDF
-- EPUB
-- DOCX
-- TXT
-- Markdown (planned)
-
----
-
-## 🏗 Tech Stack
-
-- Kotlin
-- Jetpack Compose
-- Material 3
-- Android Media3 (ExoPlayer)
-- Room Database
-- Hilt
-- Coroutines
-- OpenAI API (optional)
-- Piper TTS
-- Kokoro TTS
-- Chatterbox TTS (planned)
-
----
-
-## 🎯 Goals
-
-Echo Reader aims to provide a premium audiobook experience while remaining lightweight, fast, and privacy-friendly. Users can import their own books and listen to them using high-quality AI voices without complicated setup.
-
----
-
-## 🚧 Current Status
-
-Project is currently under active development.
-
-### Planned Milestones
-
-- [ ] File import
-- [ ] Library UI
-- [ ] PDF reader
-- [ ] EPUB parser
-- [ ] AI TTS integration
-- [ ] Background playback
-- [ ] Bookmarks
-- [ ] Sleep timer
-- [ ] Offline voices
-- [ ] Release v1.0
-
----
-
-## 📸 Screenshots
-
-Coming soon.
-
----
-
-## 🤝 Contributing
-
-Contributions, feature requests, and bug reports are welcome.
-
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push your branch
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License.
-
----
-
-## ⭐ Support
-
-If you like this project, please consider giving it a ⭐ on GitHub.
-
-It helps the project grow and motivates further development.
-
----
-
-**Made with ❤️ by Aditya Chauhan**
+1. Open Android Studio
+2. Select **Open** and choose the directory containing this project
+3. Allow Android Studio to fix any incompatibilities as it imports the project.
+4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
+5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
+6. Run the app on an emulator or physical device
