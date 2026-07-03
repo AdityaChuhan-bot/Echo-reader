@@ -113,11 +113,15 @@ class TtsManager(private val context: Context) {
                             when (playbackState) {
                                 Player.STATE_READY -> {
                                     Log.d(TAG, "ExoPlayer Ready. Playing synthesized audio.")
-                                    currentListener?.onStart()
+                                    mainScope.launch {
+                                        currentListener?.onStart()
+                                    }
                                 }
                                 Player.STATE_ENDED -> {
                                     Log.d(TAG, "ExoPlayer Ended sentence playback.")
-                                    currentListener?.onComplete()
+                                    mainScope.launch {
+                                        currentListener?.onComplete()
+                                    }
                                 }
                                 Player.STATE_IDLE -> {
                                     // Player idle or stopped
@@ -130,7 +134,9 @@ class TtsManager(private val context: Context) {
 
                         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                             Log.e(TAG, "ExoPlayer Error: ${error.message}")
-                            currentListener?.onError("Playback error: ${error.message}")
+                            mainScope.launch {
+                                currentListener?.onError("Playback error: ${error.message}")
+                            }
                             abandonAudioFocus()
                         }
                     })
@@ -401,6 +407,7 @@ class TtsManager(private val context: Context) {
     }
 
     fun stop() {
+        currentListener = null
         currentSpeakJob?.cancel()
         currentSpeakJob = null
         currentSynthesisId = null
