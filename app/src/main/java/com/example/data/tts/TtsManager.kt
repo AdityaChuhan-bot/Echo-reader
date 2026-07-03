@@ -118,7 +118,6 @@ class TtsManager(private val context: Context) {
                                 Player.STATE_ENDED -> {
                                     Log.d(TAG, "ExoPlayer Ended sentence playback.")
                                     currentListener?.onComplete()
-                                    abandonAudioFocus()
                                 }
                                 Player.STATE_IDLE -> {
                                     // Player idle or stopped
@@ -168,12 +167,16 @@ class TtsManager(private val context: Context) {
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) {
                 Log.e(TAG, "Synthesis failed: $utteranceId")
-                currentListener?.onError("KittenTTS synthesis engine failed to synthesize chunk.")
+                mainScope.launch {
+                    currentListener?.onError("KittenTTS synthesis engine failed to synthesize chunk.")
+                }
             }
 
             override fun onError(utteranceId: String?, errorCode: Int) {
                 Log.e(TAG, "Synthesis failed: $utteranceId with code $errorCode")
-                currentListener?.onError("KittenTTS engine failed with error code: $errorCode")
+                mainScope.launch {
+                    currentListener?.onError("KittenTTS engine failed with error code: $errorCode")
+                }
             }
         })
     }
@@ -300,6 +303,10 @@ class TtsManager(private val context: Context) {
     }
 
     private fun playSynthesizedFile() {
+        if (currentSynthesisId == null) {
+            Log.d(TAG, "playSynthesizedFile: Playback was stopped. Ignoring late audio file play.")
+            return
+        }
         val file = currentSynthesisFile ?: return
         if (!file.exists() || file.length() == 0L) {
             Log.e(TAG, "Synthesized audio file is missing or empty")
@@ -308,13 +315,18 @@ class TtsManager(private val context: Context) {
         }
 
         if (requestAudioFocus()) {
-            exoPlayer?.let { player ->
-                player.stop()
-                player.clearMediaItems()
-                val mediaItem = MediaItem.fromUri(Uri.fromFile(file))
-                player.setMediaItem(mediaItem)
-                player.prepare()
-                player.play()
+            try {
+                exoPlayer?.let { player ->
+                    player.stop()
+                    player.clearMediaItems()
+                    val mediaItem = MediaItem.fromUri(Uri.fromFile(file))
+                    player.setMediaItem(mediaItem)
+                    player.prepare()
+                    player.play()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error playing file with ExoPlayer: ${e.message}", e)
+                currentListener?.onError("Playback error: ${e.message}")
             }
         } else {
             Log.e(TAG, "Audio focus denied. Playback blocked.")
@@ -323,50 +335,67 @@ class TtsManager(private val context: Context) {
     }
 
     private fun requestAudioFocus(): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val playbackAttributes = AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build()
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val playbackAttributes = AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
 
-            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
-                .setAudioAttributes(playbackAttributes)
-                .setAcceptsDelayedFocusGain(true)
-                .setOnAudioFocusChangeListener(audioFocusListener)
-                .build()
+                audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(playbackAttributes)
+                    .setAcceptsDelayedFocusGain(true)
+                    .setOnAudioFocusChangeListener(audioFocusListener)
+                    .build()
 
-            return audioManager.requestAudioFocus(audioFocusRequest!!) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-        } else {
-            @Suppress("DEPRECATION")
-            return audioManager.requestAudioFocus(
-                audioFocusListener,
-                AudioManager.STREAM_MUSIC,
-                AudioManager.AUDIOFOCUS_GAIN
-            ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+                audioManager.requestAudioFocus(audioFocusRequest!!) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.requestAudioFocus(
+                    audioFocusListener,
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN
+                ) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error requesting audio focus: ${e.message}", e)
+            false
         }
     }
 
     private fun abandonAudioFocus() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
-        } else {
-            @Suppress("DEPRECATION")
-            audioManager.abandonAudioFocus(audioFocusListener)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                audioFocusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.abandonAudioFocus(audioFocusListener)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error abandoning audio focus: ${e.message}", e)
         }
     }
 
     fun pause() {
         mainScope.launch {
-            exoPlayer?.pause()
+            try {
+                exoPlayer?.pause()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error pausing ExoPlayer: ${e.message}", e)
+            }
         }
     }
 
     fun resume() {
         mainScope.launch {
-            if (exoPlayer?.playbackState != Player.STATE_IDLE) {
-                if (requestAudioFocus()) {
-                    exoPlayer?.play()
+            try {
+                if (exoPlayer?.playbackState != Player.STATE_IDLE) {
+                    if (requestAudioFocus()) {
+                        exoPlayer?.play()
+                    }
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error resuming ExoPlayer: ${e.message}", e)
             }
         }
     }
@@ -375,31 +404,69 @@ class TtsManager(private val context: Context) {
         currentSpeakJob?.cancel()
         currentSpeakJob = null
         currentSynthesisId = null
+        try {
+            nativeTts?.stop()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping native TTS: ${e.message}", e)
+        }
         mainScope.launch {
-            exoPlayer?.stop()
-            exoPlayer?.clearMediaItems()
+            try {
+                exoPlayer?.stop()
+                exoPlayer?.clearMediaItems()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error stopping ExoPlayer: ${e.message}", e)
+            }
             abandonAudioFocus()
         }
     }
 
     fun isPlaying(): Boolean {
-        return exoPlayer?.isPlaying == true
+        return try {
+            exoPlayer?.isPlaying == true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     fun shutdown() {
         stop()
-        nativeTts?.shutdown()
-        mainScope.launch {
-            mediaSession?.release()
-            exoPlayer?.release()
+        currentListener = null
+        isTtsReady = false
+        try {
+            nativeTts?.setOnUtteranceProgressListener(null)
+            nativeTts?.shutdown()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error shutting down native TTS: ${e.message}", e)
         }
-        // Clean up cached wav files periodically on shutdown
-        cacheDir.listFiles()?.forEach { file ->
+        nativeTts = null
+
+        mainScope.launch {
             try {
-                file.delete()
+                mediaSession?.release()
             } catch (e: Exception) {
-                // Ignore delete errors
+                Log.e(TAG, "Error releasing MediaSession: ${e.message}", e)
             }
+            mediaSession = null
+
+            try {
+                exoPlayer?.release()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error releasing ExoPlayer: ${e.message}", e)
+            }
+            exoPlayer = null
+        }
+
+        // Clean up cached wav files periodically on shutdown
+        try {
+            cacheDir.listFiles()?.forEach { file ->
+                try {
+                    file.delete()
+                } catch (e: Exception) {
+                    // Ignore delete errors
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cleaning up cache dir: ${e.message}", e)
         }
     }
 }
