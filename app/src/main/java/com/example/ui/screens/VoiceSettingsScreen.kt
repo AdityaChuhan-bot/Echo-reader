@@ -32,9 +32,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -63,7 +60,6 @@ fun VoiceSettingsScreen(
     val voices = viewModel.ttsManager.availableVoices
 
     var filterAccent by remember { mutableStateOf("All") } // All, American, British, Australian
-    var kittenEndpoint by remember { mutableStateOf(viewModel.ttsManager.getKittenEndpoint()) }
     val filteredVoices = if (filterAccent == "All") voices else voices.filter { it.accent == filterAccent }
 
     Column(
@@ -145,40 +141,6 @@ fun VoiceSettingsScreen(
                         Text("Ready", fontSize = 10.sp, color = NeonCyan, fontWeight = FontWeight.Bold)
                     }
                 }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        GlassCard(
-            modifier = Modifier.fillMaxWidth(),
-            backgroundColor = Color(0xFF0F172A).copy(alpha = 0.5f),
-            borderColor = NeonCyan
-        ) {
-            Column(modifier = Modifier.padding(12.dp)) {
-                Text(
-                    text = "KittenTTS endpoint",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = GlassTextPrimary
-                )
-                Text(
-                    text = "Leave blank to use the built-in fallback. Enter your self-hosted KittenTTS URL to enable remote synthesis.",
-                    fontSize = 10.sp,
-                    color = GlassTextSecondary,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
-                )
-                androidx.compose.material3.OutlinedTextField(
-                    value = kittenEndpoint,
-                    onValueChange = {
-                        kittenEndpoint = it
-                        viewModel.ttsManager.configureKittenEndpoint(it)
-                    },
-                    placeholder = { Text("https://your-kitten-tts.example") },
-                    singleLine = true,
-                    textStyle = androidx.compose.ui.text.TextStyle(color = GlassTextPrimary),
-                    modifier = Modifier.fillMaxWidth()
-                )
             }
         }
 
